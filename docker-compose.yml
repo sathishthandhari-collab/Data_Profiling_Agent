@@ -1,0 +1,57 @@
+services:
+  spark-master:
+    image: apache/spark:3.5.0
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - ./data:/opt/spark/work-dir/data
+
+  spark-worker:
+    image: apache/spark:3.5.0
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    depends_on:
+      - spark-master
+    volumes:
+      - ./data:/opt/spark/work-dir/data
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  agent:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SPARK_MASTER=local[*]
+      - OLLAMA_HOST=http://ollama:11434
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - DATA_PATH=/data
+    volumes:
+      - .:/app
+      - ./data:/data
+    depends_on:
+      - spark-master
+      - ollama
+
+  ui:
+    build: .
+    command: ["streamlit", "run", "src/ui/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    ports:
+      - "8501:8501"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - DATA_PATH=/data
+    volumes:
+      - .:/app
+      - ./data:/data
+    depends_on:
+      - agent
+
+volumes:
+  ollama_data:

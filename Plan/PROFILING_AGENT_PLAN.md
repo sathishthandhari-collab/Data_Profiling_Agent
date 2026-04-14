@@ -66,23 +66,28 @@ outputs are passed together to the LLM interpretation step.
 - Output: `PatternProfile` Pydantic model
 
 ### 6. Tool: Relation tool
-- Cross-table FK hint detection: same column name + matching cardinality ratio
-- Referential integrity sample check: does col A values exist in col B?
-- Join candidate scoring
+- Cross-table FK hint detection: Use HyperLogLog (HLL) sketches (`approx_count_distinct`) for fast overlap estimation.
+- Match high-overlap columns with similar naming patterns for join candidate scoring.
 - Output: `RelationProfile` Pydantic model
 
-### 7. LLM interpretation layer
-Receives all four Pydantic tool outputs as context. Sends a structured prompt to the LLM.
+### 7. Tool: PII Detection tool
+- Identify sensitive data (Email, SSN, Credit Card, Names).
+- Hybrid approach: Spark Regex (fast) for structured IDs + LLM sampling for semantic detection (e.g., person names).
+- Output: `PIIProfile` Pydantic model
+
+### 8. LLM interpretation layer
+Receives all five Pydantic tool outputs as context. Sends a structured prompt to the LLM.
+For wide tables (>50 columns), a **Summarizer** node filters for "interesting" columns (high nulls, outliers, PII, potential keys) before interpretation.
 
 **What the LLM does:**
 - Suggests human-readable entity names for each table (e.g. `acct_master` → `Account`)
 - Confirms or overrides the BK candidate shortlist with reasoning
-- Flags columns that look like they carry PII
+- Explains the significance of detected PII and suggests masking strategies
 - Surfaces data quality concerns (e.g. "loan_amount has 12% nulls — flag for DQ agent")
 - Assigns a confidence score (0.0–1.0) to each entity and BK suggestion
 - Output: `LLMInterpretation` Pydantic model
 
-### 8. Output: ProfileReport
+### 9. Output: ProfileReport
 Top-level Pydantic model wrapping all tool outputs + LLM interpretation.
 Serialised to JSON and written to a Delta Lake table (`profiling_reports`).
 Also exposed via FastAPI endpoint for the orchestrator to consume.
@@ -101,16 +106,19 @@ Also exposed via FastAPI endpoint for the orchestrator to consume.
 4. Schema tool runs     → SchemaProfile
 5. Stats tool runs      → StatsProfile
 6. Pattern tool runs    → PatternProfile
-7. Relation tool runs   → RelationProfile
+7. Relation tool runs   → RelationProfile (HLL-based)
+8. PII tool runs        → PIIProfile
        ↓
-8. All four outputs passed to LLM interpretation step
+9. Summarizer node ranks "interesting" columns (if wide table)
        ↓
-9. LLM returns entity hints, BK suggestions, DQ flags, confidence scores
+10. All five outputs passed to LLM interpretation step
        ↓
-10. ProfileReport assembled and validated (Pydantic)
+11. LLM returns entity hints, BK suggestions, DQ flags, confidence scores
        ↓
-11. ProfileReport written to Delta Lake (profiling_reports table)
-12. ProfileReport returned via FastAPI → consumed by modeling agent
+12. ProfileReport assembled and validated (Pydantic)
+       ↓
+13. ProfileReport written to Delta Lake (profiling_reports table)
+14. ProfileReport returned via FastAPI → consumed by modeling agent
 ```
 
 ---
@@ -128,10 +136,16 @@ class ColumnSchema(BaseModel):
 class StatsProfile(BaseModel):
     column: str
     null_pct: float
-    cardinality: int
+    cardinality_est: int       # Using HLL/Approximate
     min_val: Optional[Any]
     max_val: Optional[Any]
     has_outliers: bool
+
+class PIIProfile(BaseModel):
+    column: str
+    is_pii: bool
+    pii_type: Optional[str]    # e.g., "EMAIL", "SSN", "NAME"
+    confidence: float
 
 class BKCandidate(BaseModel):
     column: str
@@ -147,7 +161,7 @@ class FKHint(BaseModel):
 class LLMInterpretation(BaseModel):
     suggested_entity_name: str
     bk_candidates: list[BKCandidate]
-    pii_columns: list[str]
+    pii_summary: list[str]
     dq_flags: list[str]
     confidence: float
 
@@ -159,9 +173,10 @@ class ProfileReport(BaseModel):
     row_count: int
     columns: list[ColumnSchema]
     stats: list[StatsProfile]
+    pii_info: list[PIIProfile]
     fk_hints: list[FKHint]
     interpretation: LLMInterpretation
-    schema_version: str = "1.0.0"
+    schema_version: str = "1.1.0"
 ```
 
 ---
@@ -194,12 +209,13 @@ banking-profiling-agent/
 │   │   ├── spark_session.py        # SparkSession factory (local Docker mode)
 │   │   └── data_reader.py          # Delta / Parquet / CSV loader
 │   │
-│   ├── tools/
-│   │   ├── __init__.py
-│   │   ├── schema_tool.py          # LangChain tool — SchemaProfile
-│   │   ├── stats_tool.py           # LangChain tool — StatsProfile
-│   │   ├── pattern_tool.py         # LangChain tool — PatternProfile
-│   │   └── relation_tool.py        # LangChain tool — RelationProfile
+├── tools/
+│   ├── __init__.py
+│   ├── schema_tool.py          # LangChain tool — SchemaProfile
+│   ├── stats_tool.py           # LangChain tool — StatsProfile
+│   ├── pattern_tool.py         # LangChain tool — PatternProfile
+│   ├── relation_tool.py        # LangChain tool — RelationProfile (HLL)
+│   └── pii_tool.py             # LangChain tool — PIIProfile
 │   │
 │   ├── agent/
 │   │   ├── __init__.py
@@ -233,6 +249,7 @@ banking-profiling-agent/
 │   ├── test_stats_tool.py
 │   ├── test_pattern_tool.py
 │   ├── test_relation_tool.py
+│   ├── test_pii_tool.py
 │   ├── test_agent.py               # End-to-end agent run on fixture data
 │   └── fixtures/
 │       └── sample_accounts.csv     # Small fixture for fast tests
@@ -291,7 +308,7 @@ Delta Lake files written to a shared Docker volume mounted at `/data/delta`.
 ## Key deliverables for this agent
 
 - [ ] `banking_faker.py` — generates 6 banking tables, ~50K rows each
-- [ ] All 4 tools working independently with unit tests
+- [ ] All 5 tools working independently with unit tests
 - [ ] Full LangGraph agent running end-to-end on fixture data
 - [ ] `ProfileReport` written to Delta and readable by the next agent
 - [ ] FastAPI endpoint returning `ProfileReport` as JSON

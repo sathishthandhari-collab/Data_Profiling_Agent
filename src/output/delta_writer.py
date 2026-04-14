@@ -19,8 +19,11 @@ class DeltaWriter:
             self.output_path = str(p) if p.is_absolute() else str(data_root / p)
 
         # Sidecar directory: one JSON file per report_id for O(1) retrieval.
-        # Avoids the full Delta table scan that was previously triggered on every GET.
-        self._sidecar_dir = Path(self.output_path) / "_reports"
+        # Stored as a sibling to the Delta table root (not inside it) to keep
+        # the Delta directory clean and unambiguous.
+        # Layout: data/delta/profiling_reports/          ← Delta table
+        #         data/delta/profiling_reports_index/    ← sidecar JSON files
+        self._sidecar_dir = Path(self.output_path + "_index")
 
     def write_report(self, report: ProfileReport):
         """

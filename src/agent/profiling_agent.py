@@ -64,11 +64,11 @@ class ProfilingAgent:
                     continue
                 if table_dir.name in {current_table, "profiling_reports"}:
                     continue
-                    try:
-                        other_dfs[table_dir.name] = self.reader.spark.read.format("delta").load(str(table_dir))
-                    except Exception:
-                        # Relation discovery is best-effort; we don't want to fail the whole run.
-                        continue
+                try:
+                    other_dfs[table_dir.name] = self.reader.spark.read.format("delta").load(str(table_dir))
+                except Exception:
+                    # Relation discovery is best-effort; we don't want to fail the whole run.
+                    continue
 
         return {
             "column_schemas": SchemaTool.profile(df),
@@ -225,6 +225,12 @@ class ProfilingAgent:
             fk_hints=state["fk_hints"],
             interpretation=interpretation
         )
+
+        # Release cached data for this run to avoid unbounded executor memory growth.
+        try:
+            state["df"].unpersist(blocking=False)
+        except Exception:
+            pass
 
         return {"interpretation": interpretation, "final_report": report}
 

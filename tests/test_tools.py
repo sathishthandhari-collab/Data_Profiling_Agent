@@ -18,7 +18,7 @@ def test_schema_tool_pk_detection(spark):
     ])
     df = spark.createDataFrame(data, schema)
     
-    results = SchemaTool.profile(df)
+    results = SchemaTool.profile(df, df.count())
     
     # ID should be a PK candidate
     id_profile = next(c for c in results if c.name == "id")
@@ -41,7 +41,7 @@ def test_stats_tool_metrics(spark):
     ])
     df = spark.createDataFrame(data, schema)
     
-    results = StatsTool.profile(df)
+    results = StatsTool.profile(df, df.count())
     
     col1_stats = next(s for s in results if s.column == "col1")
     col2_stats = next(s for s in results if s.column == "col2")

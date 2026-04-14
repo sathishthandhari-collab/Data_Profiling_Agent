@@ -1,4 +1,4 @@
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Union
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 import uuid
@@ -14,8 +14,10 @@ class StatsProfile(BaseModel):
     column: str
     null_pct: float
     cardinality_est: int
-    min_val: Optional[Any] = None
-    max_val: Optional[Any] = None
+    min_val: Optional[Union[int, float, str]] = None
+    max_val: Optional[Union[int, float, str]] = None
+    mean_val: Optional[float] = None
+    stddev_val: Optional[float] = None
     has_outliers: bool = False
 
 class PIIProfile(BaseModel):

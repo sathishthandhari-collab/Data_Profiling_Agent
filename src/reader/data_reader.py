@@ -20,8 +20,14 @@ class DataReader:
         """
         data_root = Path(os.getenv("DATA_PATH", "data"))
 
-        # 1) Path-based ingestion (preferred when provided)
-        if config.path:
+        # 1) Path-based ingestion: preferred when `path` is set, or when
+        #    connection_type="file" is specified (which requires a path).
+        if config.path or config.connection_type == "file":
+            if not config.path:
+                raise ValueError(
+                    "connection_type='file' requires 'path' to be set in SourceConfig. "
+                    "Example: SourceConfig(connection_type='file', path='data/delta/account', format='delta')"
+                )
             p = Path(config.path)
             fmt = config.format
             if not fmt:

@@ -1,6 +1,7 @@
 import json
+import logging
 import os
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 from pathlib import Path
 from langgraph.graph import StateGraph, END
 from litellm import completion
@@ -19,6 +20,18 @@ from src.models.profile_report import ProfileReport, LLMInterpretation
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
+
+def _esc(s: str) -> str:
+    """
+    Escape curly braces in a string so Python's str.format() treats them as
+    literals rather than format-field delimiters.  Required when injecting
+    JSON payloads (which contain { and }) into an str.format() template.
+    """
+    return s.replace("{", "{{").replace("}", "}}")
+
+
 class ProfilingAgent:
     def __init__(self, model_name: str = "gemini/gemini-1.5-pro"):
         self.model_name = model_name
@@ -30,52 +43,57 @@ class ProfilingAgent:
 
     def _build_graph(self):
         graph = StateGraph(AgentState)
-        
+
         # Define Nodes
         graph.add_node("reader", self.node_reader)
         graph.add_node("profiler", self.node_profiler)
         graph.add_node("summarizer", self.node_summarizer)
         graph.add_node("interpreter", self.node_interpreter)
-        
+
         # Define Edges
         graph.set_entry_point("reader")
         graph.add_edge("reader", "profiler")
         graph.add_edge("profiler", "summarizer")
         graph.add_edge("summarizer", "interpreter")
         graph.add_edge("interpreter", END)
-        
+
         return graph.compile()
 
     def node_reader(self, state: AgentState):
         df = self.reader.load_data(state["source_config"]).cache()
-        row_count = df.count()  # materialize cache once; tools will reuse
+        row_count = df.count()  # Materialize cache once; tools reuse this value.
         return {"df": df, "df_rows_count": row_count}
 
     def node_profiler(self, state: AgentState):
         df = state["df"]
-        current_table = state["source_config"].table
-        
-        # Load other DataFrames for Relation Discovery
-        other_dfs = {}
+        row_count = state["df_rows_count"]
+        # Normalise to lowercase for case-insensitive self-exclusion below.
+        current_table = state["source_config"].table.lower()
+
+        # Load other DataFrames for Relation Discovery.
+        other_dfs: Dict[str, Any] = {}
         delta_base = self._data_root() / "delta"
         if delta_base.exists():
             for table_dir in delta_base.iterdir():
                 if not table_dir.is_dir():
                     continue
-                if table_dir.name in {current_table, "profiling_reports"}:
+                # Case-insensitive comparison prevents self-referential FK hints
+                # when the directory name differs only by case from current_table.
+                if table_dir.name.lower() in {current_table, "profiling_reports"}:
                     continue
                 try:
                     other_dfs[table_dir.name] = self.reader.spark.read.format("delta").load(str(table_dir))
                 except Exception:
-                    # Relation discovery is best-effort; we don't want to fail the whole run.
+                    # Relation discovery is best-effort; don't fail the whole run.
                     continue
 
+        # Pass row_count to every tool — eliminates 4 redundant df.count() calls.
         return {
-            "column_schemas": SchemaTool.profile(df),
-            "stats_profiles": StatsTool.profile(df),
-            "pii_profiles": PIITool.profile(df),
-            "detected_patterns": PatternTool.profile(df),
-            "fk_hints": RelationTool.profile(df, other_dfs)
+            "column_schemas": SchemaTool.profile(df, row_count),
+            "stats_profiles": StatsTool.profile(df, row_count),
+            "pii_profiles": PIITool.profile(df, row_count),
+            "detected_patterns": PatternTool.profile(df, row_count),
+            "fk_hints": RelationTool.profile(df, other_dfs),
         }
 
     def node_summarizer(self, state: AgentState):
@@ -92,7 +110,7 @@ class ProfilingAgent:
             # Small tables: pass full stats through (more useful than truncation).
             return {"summarized_stats": [s.model_dump() for s in stats]}
 
-        interesting_cols = set()
+        interesting_cols: set = set()
         interesting_cols |= pii_cols
         interesting_cols |= pattern_cols
         interesting_cols |= pk_cols
@@ -114,7 +132,7 @@ class ProfilingAgent:
 
         max_items = 30
         selected = []
-        seen = set()
+        seen: set = set()
         # Ensure flagged columns are included first.
         for s in scored:
             if s.column in interesting_cols and s.column not in seen:
@@ -172,15 +190,28 @@ class ProfilingAgent:
         )
 
     def node_interpreter(self, state: AgentState):
+        # Carry forward any errors accumulated by earlier nodes.
+        errors: List[str] = list(state.get("errors") or [])
+
+        # Serialize all list/dict inputs as compact JSON before prompt injection.
+        # Rationale: str.format() would call repr() on raw lists, producing noisy
+        # Python syntax.  JSON is both cleaner for the LLM and avoids str.format()
+        # misinterpreting JSON braces as format-field delimiters (handled by _esc).
+        pk_json      = _esc(json.dumps([s.name for s in state["column_schemas"] if s.is_pk_candidate], default=str))
+        stats_json   = _esc(json.dumps(state["summarized_stats"], default=str, indent=2))
+        pii_json     = _esc(json.dumps([p.column for p in state["pii_profiles"] if p.is_pii], default=str))
+        patterns_json = _esc(json.dumps(state["detected_patterns"], default=str, indent=2))
+        fk_json      = _esc(json.dumps([h.model_dump() for h in state["fk_hints"]], default=str, indent=2))
+
         prompt = INTERPRETATION_PROMPT.format(
             table_name=state["source_config"].name,
             source_system=state["source_config"].source_system,
             row_count=state["df_rows_count"],
-            pk_candidates=[s.name for s in state["column_schemas"] if s.is_pk_candidate],
-            stats_summary=state["summarized_stats"],
-            pii_findings=[p.column for p in state["pii_profiles"] if p.is_pii],
-            pattern_detections=state["detected_patterns"],
-            fk_hints=[h.model_dump() for h in state["fk_hints"]]
+            pk_candidates=pk_json,
+            stats_summary=stats_json,
+            pii_findings=pii_json,
+            pattern_detections=patterns_json,
+            fk_hints=fk_json,
         )
 
         disable_llm = os.getenv("DISABLE_LLM", "").strip().lower() in {"1", "true", "yes"}
@@ -205,16 +236,24 @@ class ProfilingAgent:
                 except Exception:
                     # Best-effort extraction if the model wraps JSON in text.
                     import re
-
                     m = re.search(r"\{.*\}", content, flags=re.DOTALL)
                     if not m:
                         raise
                     interpretation_dict = json.loads(m.group(0))
+
                 interpretation = LLMInterpretation(**interpretation_dict)
-            except Exception:
+
+            except Exception as e:
+                # Log the failure with full context so it's diagnosable, then
+                # fall back to heuristics so the agent always returns a report.
+                logger.warning(
+                    "LLM interpretation failed (%s: %s) — using heuristic fallback.",
+                    type(e).__name__, e,
+                )
+                errors.append(f"LLM interpretation failed: {type(e).__name__}: {e}")
                 interpretation = self._fallback_interpretation(state)
-        
-        # Final Assembly
+
+        # Final Assembly — always runs regardless of LLM success/failure.
         report = ProfileReport(
             source_table=state["source_config"].name,
             source_system=state["source_config"].source_system,
@@ -223,7 +262,7 @@ class ProfilingAgent:
             stats=state["stats_profiles"],
             pii_info=state["pii_profiles"],
             fk_hints=state["fk_hints"],
-            interpretation=interpretation
+            interpretation=interpretation,
         )
 
         # Release cached data for this run to avoid unbounded executor memory growth.
@@ -232,11 +271,11 @@ class ProfilingAgent:
         except Exception:
             pass
 
-        return {"interpretation": interpretation, "final_report": report}
+        return {"errors": errors, "interpretation": interpretation, "final_report": report}
 
     def run(self, source_config):
         initial_state = {
             "source_config": source_config,
-            "errors": []
+            "errors": [],
         }
         return self.workflow.invoke(initial_state)

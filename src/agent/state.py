@@ -21,7 +21,7 @@ class AgentState(TypedDict):
     stats_profiles: List[StatsProfile]
     pii_profiles: List[PIIProfile]
     fk_hints: List[FKHint]
-    detected_patterns: Dict[str, str]
+    detected_patterns: Dict[str, List[str]]
     
     # Processed Data (for LLM)
     summarized_stats: List[Dict[str, Any]]

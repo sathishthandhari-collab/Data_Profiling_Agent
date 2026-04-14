@@ -1,36 +1,44 @@
-import re
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
-from typing import List, Dict
+from typing import Dict, List
+
 
 class PatternTool:
-    # Banking ID Patterns
+    # Banking ID patterns.
+    # Patterns that should match the full column value are anchored with ^ and $.
+    # Patterns that match a distinctive prefix/suffix (e.g. ACC-, CUST-) are left unanchored.
     BANKING_PATTERNS = {
-        "IBAN": r"[A-Z]{2}\d{2}[A-Z0-9]{11,30}",
+        "IBAN": r"^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$",   # Anchored — generic chars need full-value context.
         "ACCOUNT_NUMBER": r"ACC-\d+",
         "CUSTOMER_ID": r"CUST-\d+",
         "LOAN_ID": r"LOAN-\d+",
-        "SWIFT_BIC": r"^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$"
+        "SWIFT_BIC": r"^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$",
     }
 
     @staticmethod
-    def profile(df: DataFrame) -> Dict[str, str]:
+    def profile(df: DataFrame, total_count: int) -> Dict[str, List[str]]:
         """
         Detects specific string patterns in columns.
-        Returns a mapping of column_name -> detected_pattern_type.
+
+        Returns a mapping of column_name -> list of detected pattern types.
+        A column can match multiple patterns (e.g. an IBAN column that also
+        matches an ACCOUNT_NUMBER prefix), so all matches are returned.
+
+        Args:
+            df: Cached source DataFrame.
+            total_count: Pre-computed row count passed from the agent state.
+                         Avoids a redundant df.count() Spark action.
         """
-        results = {}
-        total_count = df.count()
+        results: Dict[str, List[str]] = {}
         if total_count == 0:
             return results
 
-        # Only check String columns
+        # Only check String columns.
         string_cols = [f.name for f in df.schema.fields if "String" in str(f.dataType)]
-
         if not string_cols:
             return results
 
-        # Compute non-null counts and match counts in a single aggregation.
+        # Single-pass aggregation: non-null counts and per-pattern match counts.
         agg_exprs = []
         for c in string_cols:
             agg_exprs.append(F.count(F.col(c)).alias(f"{c}__nn"))
@@ -45,10 +53,14 @@ class PatternTool:
             denom = int(row.get(f"{c}__nn", 0) or 0)
             if denom == 0:
                 continue
-            for p_name in PatternTool.BANKING_PATTERNS.keys():
+            matched: List[str] = []
+            for p_name in PatternTool.BANKING_PATTERNS:
                 match_count = int(row.get(f"{c}__{p_name}", 0) or 0)
-                if (match_count / denom) > 0.5:  # Majority match among non-nulls
-                    results[c] = p_name
-                    break
-        
+                # Collect ALL patterns where the majority of non-null values match.
+                # No break — a column can legitimately satisfy multiple patterns.
+                if (match_count / denom) > 0.5:
+                    matched.append(p_name)
+            if matched:
+                results[c] = matched
+
         return results

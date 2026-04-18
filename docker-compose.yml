@@ -5,6 +5,7 @@ services:
     ports:
       - "8080:8080"
       - "7077:7077"
+      - "4040:4040"
     volumes:
       - ./data:/opt/spark/work-dir/data
 
@@ -16,28 +17,24 @@ services:
     volumes:
       - ./data:/opt/spark/work-dir/data
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-
   agent:
     build: .
     ports:
       - "8000:8000"
     environment:
       - SPARK_MASTER=local[*]
-      - OLLAMA_HOST=http://ollama:11434
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LLM_PROVIDER=gemini/gemini-2.5-flash
       - DATA_PATH=/data
+      - DATABRICKS_HOST=${DATABRICKS_HOST}
+      - DATABRICKS_TOKEN=${DATABRICKS_TOKEN}
+      - DATABRICKS_CATALOG=${DATABRICKS_CATALOG}
+      - DATABRICKS_SCHEMA=${DATABRICKS_SCHEMA}
     volumes:
       - .:/app
       - ./data:/data
     depends_on:
       - spark-master
-      - ollama
 
   ui:
     build: .
@@ -52,6 +49,3 @@ services:
       - ./data:/data
     depends_on:
       - agent
-
-volumes:
-  ollama_data:

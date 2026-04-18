@@ -1,13 +1,13 @@
 import re
+import structlog
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 from typing import List
 from src.models.profile_report import PIIProfile
 
+logger = structlog.get_logger(__name__)
 
 # Matches column names that are strongly indicative of a *person's* name field.
-# Allows: name, first_name, last_name, full_name, given_name, customer_name, etc.
-# Rejects: product_name, country_name, file_name, username, column_name, etc.
 _PERSON_NAME_COL = re.compile(
     r"^(?:(?:first|last|full|given|middle|sur|family|"
     r"customer|person|employee|client|owner|contact)_)?name$"
@@ -20,7 +20,6 @@ class PIITool:
         "EMAIL": r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
         "SSN": r"\d{3}-\d{2}-\d{4}",
         "PHONE": r"(\+\d{1,2}\s)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}",
-        # Add more patterns as needed.
     }
 
     @staticmethod
@@ -42,6 +41,8 @@ class PIITool:
         if not string_cols:
             return pii_profiles
 
+        logger.info("pii_profiling_started", string_column_count=len(string_cols))
+
         # Single-pass aggregation: non-null counts and pattern match counts.
         agg_exprs = []
         for c in string_cols:
@@ -50,7 +51,12 @@ class PIITool:
                 agg_exprs.append(
                     F.sum(F.when(F.col(c).rlike(regex), F.lit(1)).otherwise(F.lit(0))).alias(f"{c}__{p_type}")
                 )
-        row = df.agg(*agg_exprs).collect()[0].asDict()
+        
+        try:
+            row = df.agg(*agg_exprs).collect()[0].asDict()
+        except Exception as e:
+            logger.error("pii_agg_failed", error=str(e))
+            return pii_profiles
 
         for col in string_cols:
             is_pii = False
@@ -68,21 +74,21 @@ class PIITool:
                         pii_type = p_type
                         max_confidence = confidence
 
-            # Column-name heuristic: only flag columns whose name specifically
-            # denotes a person's name (e.g. name, first_name, last_name).
-            # Avoids false positives on product_name, country_name, file_name, etc.
+            # Column-name heuristic
             if not is_pii and _PERSON_NAME_COL.match(col.lower()):
                 is_pii = True
                 pii_type = "NAME"
-                max_confidence = 0.75  # Moderate confidence — heuristic, not data-driven.
+                max_confidence = 0.75
 
-            pii_profiles.append(
-                PIIProfile(
-                    column=col,
-                    is_pii=is_pii,
-                    pii_type=pii_type,
-                    confidence=max_confidence,
+            if is_pii:
+                pii_profiles.append(
+                    PIIProfile(
+                        column=col,
+                        is_pii=is_pii,
+                        pii_type=pii_type,
+                        confidence=max_confidence,
+                    )
                 )
-            )
 
+        logger.info("pii_profiling_complete", pii_found_count=len(pii_profiles))
         return pii_profiles

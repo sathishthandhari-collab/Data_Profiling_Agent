@@ -1,79 +1,89 @@
-# Data Profiling Agent (Agent 1 of 6)
+# 🏦 Data Profiling Agent
 
-An intelligent, autonomous profiling engine designed for banking-grade datasets. The Data Profiling Agent is the foundational layer of a 6-agent ecosystem for automated Data Vault 2.0 (DV2.0) modeling and pipeline generation.
+![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![LLM](https://img.shields.io/badge/LLM-Gemini_2.5_Flash-orange)
+![Spark](https://img.shields.io/badge/Spark-3.5.0-red)
 
-[![Demo Video](https://img.shields.io/badge/Demo-Loom-blueviolet?logo=loom)](https://www.loom.com/share/placeholder) <!-- Replace with actual Loom link -->
+**Modern, AI-driven data profiling and interpretation for Delta Lake and more.**
 
-## 🎯 Core Mission & Vision
-
-In modern banking environments, understanding raw data at scale is the primary bottleneck for data engineering. This agent automates the "Observation" phase of the data lifecycle. It uses **PySpark** for high-performance statistical analysis and **LLMs (Gemini Flash)** for semantic interpretation, producing versioned, immutable `ProfileReports` that serve as the ground truth for downstream modeling agents.
-
-## 🔄 Architecture & Workflow
-
-The agent utilizes a stateful **LangGraph** workflow to orchestrate complex data analysis tasks.
-
-```mermaid
-graph TD
-    A[Start] --> B(DataReader)
-    B --> C(Profiler Node)
-    C --> D(Summarizer)
-    D --> E(LLM Interpreter)
-    E --> F[Delta Lake / API Output]
-
-    subgraph "Spark Profiling Tools"
-    C --> C1[Schema Discovery]
-    C --> C2[Stats & Outliers]
-    C --> C3[PII Detection]
-    C --> C4[Pattern Matching]
-    C --> C5[Relation Scoring]
-    end
-```
-
-### 🛠 Key Capabilities
-
-*   **Intelligent Profiling:** Single-pass Spark aggregations using HLL (HyperLogLog) for ultra-fast cardinality estimation on billions of rows.
-*   **Hybrid PII Detection:** Combines high-speed Regex matching with semantic LLM sampling to identify sensitive data (SSN, IBAN, Names) without manual tagging.
-*   **Cross-Table Relation Discovery:** Scores potential join keys between tables using containment-based HLL sketches, suggesting foreign key candidates.
-*   **Semantic Interpretation:** Translates technical stats into human-readable entity descriptions, identifying business key (BK) candidates and data quality concerns.
-*   **Regulatory Compliance by Design:** Every profile is stored in an **immutable Delta Lake table**, providing a permanent audit trail for RBI, SOX, and BASEL compliance.
-
-## 🚀 Quick Start
-
-### 1. Environment Setup
-```bash
-cp .env.example .env
-# Edit .env with your GEMINI_API_KEY
-```
-
-### 2. Launch with Docker
-```bash
-docker compose up --build
-```
-*   **Streamlit UI:** `http://localhost:8501`
-*   **FastAPI:** `http://localhost:8000`
-
-### 3. Generate Sample Banking Data
-```bash
-python3 scripts/data_gen/ingest_data.py
-```
-
-## 📂 Documentation Portal
-
-Explore the detailed guides for developers and users:
-
-*   [**Tutorials**](docs/tutorials/getting-started.md): From installation to your first report.
-*   [**How-to Guides**](docs/how-to/profile-new-data.md): Profiling custom sources and configuring patterns.
-*   [**Architecture & Explanation**](docs/explanation/architecture.md): Deep dive into the LangGraph logic and Spark tools.
-*   [**API & Data Reference**](docs/reference/api-reference.md): Technical specs for endpoints and the `ProfileReport` model.
-
-## 🏗 Deployment Overview
-
-### Local / Docker (Default)
-Ideal for development and small-scale profiling. Uses a local Spark cluster and file-based Delta storage.
-
-### Databricks Deployment
-The agent is designed to be platform-agnostic. By swapping 3 lines of configuration, it can attach to a **Databricks SQL Warehouse** via `databricks-connect` and read directly from **Unity Catalog**. 
-> See [Databricks Deployment Guide](docs/explanation/databricks-deployment.md) for details.
+The **Data Profiling Agent** is an intelligent system that automates the complex task of understanding large datasets. By combining the scale of **PySpark** with the reasoning power of **Gemini 2.5 Flash**, it transforms raw statistics into human-readable insights, detects sensitive PII, and infers cross-table relationships.
 
 ---
-*Part of the [Agentic Data Engineering Architecture](https://github.com/placeholder-repo).*
+
+## ✨ Key Features
+
+- **🤖 AI interpretation:** Automatically generates entity descriptions, data quality (DQ) flags, and primary key analysis.
+- **🛡️ PII Detection:** High-performance detection of sensitive data using Spark-native functions.
+- **🔗 Relationship Discovery:** Infers potential foreign key relationships across your entire Delta Lake.
+- **📈 Pattern Matching:** Extensible regex-based pattern detection for domain-specific identifiers.
+- **🚀 Scalable Profiling:** Built-in sampling guards and caching to handle datasets with millions of rows.
+- **🔌 Flexible Interfaces:** Both a developer-friendly **FastAPI** and a user-friendly **Streamlit UI**.
+
+---
+
+## 🏗️ Architecture
+
+The agent uses a structured **LangGraph** workflow to ensure reliability and deterministic execution of profiling tools.
+
+```mermaid
+graph LR
+    subgraph "Agent Workflow"
+        Reader --> Profiler
+        Profiler --> Summarizer
+        Summarizer --> Interpreter
+    end
+    
+    subgraph "Profiling Core"
+        Profiler --- Schema[Schema Tool]
+        Profiler --- Stats[Stats Tool]
+        Profiler --- PII[PII Tool]
+        Profiler --- Patterns[Pattern Tool]
+        Profiler --- Relations[Relation Tool]
+    end
+
+    Interpreter --> LLM((Gemini 2.5))
+```
+
+---
+
+## ⚡ Quick Start
+
+```bash
+# Clone the repository
+git clone <repository_url> && cd data-profiling-agent
+
+# Set up environment
+cp .env.example .env
+
+# Launch with Docker
+docker-compose up -d
+```
+Visit http://localhost:8501 to start profiling!
+
+---
+
+## 📖 Documentation Portal
+
+Explore our detailed documentation following the Diátaxis framework:
+
+| Section | Description |
+| --- | --- |
+| 🚀 [**Tutorials**](./docs/tutorial.md) | Step-by-step guides for getting started and batch profiling. |
+| 🛠️ [**How-To Guides**](./docs/how-to-guides.md) | Guides for custom patterns, data connections, and LLM setup. |
+| 📚 [**Reference**](./docs/api-reference.md) | Technical specs for API endpoints, models, and profiling tools. |
+| 🧠 [**Explanation**](./docs/explanation.md) | Deep dives into the agent's architecture and design decisions. |
+
+---
+
+## 🛠️ Tech Stack
+
+- **Core Engine:** Python 3.10+, LangGraph, LiteLLM
+- **Data Engine:** PySpark, Delta Lake
+- **API:** FastAPI, Uvicorn
+- **UI:** Streamlit
+- **Quality:** Pytest, Structlog
+
+---
+
+[← Return to Documentation Index](./docs/index.md)

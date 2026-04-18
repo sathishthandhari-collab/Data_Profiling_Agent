@@ -1,28 +1,39 @@
-# Data Profiling Agent Documentation
+# 🏦 Data Profiling Agent Documentation
 
-**[Home](index.md)**
+Welcome to the documentation for the **Data Profiling Agent**, an AI-driven system for modern, configuration-driven data profiling using Gemini 2.5 Flash, PySpark, and Delta Lake.
 
-Welcome to the comprehensive documentation for the Data Profiling Agent. This project is the first of six agents in an autonomous data engineering ecosystem, focused on high-scale banking data discovery.
-
-## 🏁 Get Started
-Follow our guided path to set up your environment and run your first profiling job.
-*   [**Getting Started Tutorial**](tutorials/getting-started.md): Installation to first report.
-
-## 🛠️ How-to Guides
-Specific, task-oriented instructions for common scenarios.
-*   [**Profile a New Table**](how-to/profile-new-data.md): Connecting to Delta, Parquet, or CSV sources.
-*   [**Configure Custom Patterns**](how-to/configure-patterns.md): Adjusting `patterns.yaml` for your specific source systems.
-
-## 🏗️ Architecture & Concepts
-Deep dives into the "Why" and "How" of the agent's internal logic.
-*   [**Core Architecture**](explanation/architecture.md): LangGraph nodes and state management.
-*   [**Spark Tooling**](explanation/spark-tools.md): Understanding the single-pass profiling tools.
-*   [**Databricks Deployment**](explanation/databricks-deployment.md): Running the agent on Databricks with Unity Catalog.
-
-## 📚 Technical Reference
-Detailed specifications for integration and extension.
-*   [**API Reference**](reference/api-reference.md): FastAPI endpoints and request/response models.
-*   [**Data Models (Pydantic)**](reference/data-models.md): Detailed schema of the `ProfileReport`.
+The agent automates the discovery of data patterns, PII detection, relationship inference, and provides LLM-driven interpretations of complex datasets.
 
 ---
-[**Next: Getting Started Tutorial ➔**](tutorials/getting-started.md)
+
+## 🗺️ Documentation Map
+
+Our documentation is organized following the [Diátaxis framework](https://diataxis.fr/):
+
+### 🚀 [Tutorials](./tutorial.md)
+*Learning-oriented: Follow a guided path to get started.*
+- **Quickstart Guide:** From zero to your first profile report.
+- **Batch Profiling:** Scale your profiling tasks across multiple tables.
+
+### 🛠️ [How-To Guides](./how-to-guides.md)
+*Problem-oriented: Solve specific tasks and common challenges.*
+- **Custom Patterns:** Adding domain-specific regex patterns for detection.
+- **Data Connections:** Connecting to Delta Lake, Parquet, or CSV sources.
+- **LLM Configuration:** Swapping models or providers via LiteLLM.
+- **Running in Docker:** Deploying the agent and UI stack.
+
+### 📚 [Reference](./api-reference.md)
+*Information-oriented: Technical descriptions and API specifications.*
+- **API Endpoints:** Detailed documentation of the FastAPI interface.
+- **Data Models:** Schema definitions for `SourceConfig` and `ProfileReport`.
+- **Tool Logic:** Technical specifications of the underlying profiling tools.
+
+### 🧠 [Explanation](./explanation.md)
+*Understanding-oriented: High-level concepts and architecture.*
+- **Agent Architecture:** Deep dive into the LangGraph workflow.
+- **Interpretation Engine:** How the LLM synthesizes profiling results.
+- **Security & Privacy:** PII detection strategies and data sampling.
+
+---
+
+[← Back to README](../README.md)

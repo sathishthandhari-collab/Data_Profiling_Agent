@@ -1,9 +1,11 @@
+import structlog
 from decimal import Decimal
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Any
 from src.models.profile_report import StatsProfile
 
+logger = structlog.get_logger(__name__)
 
 def _coerce_val(v) -> Optional[Union[int, float, str]]:
     """
@@ -35,6 +37,7 @@ class StatsTool:
             return []
 
         cols = df.columns
+        logger.info("stats_profiling_started", column_count=len(cols))
 
         # 1) Single-pass aggregations: null counts, cardinality, min/max, mean, stddev.
         agg_exprs = []
@@ -54,7 +57,11 @@ class StatsTool:
                 agg_exprs.append(F.mean(F.col(c)).alias(f"{c}__mean"))
                 agg_exprs.append(F.stddev(F.col(c)).alias(f"{c}__stddev"))
 
-        base_row = df.agg(*agg_exprs).collect()[0].asDict()
+        try:
+            base_row = df.agg(*agg_exprs).collect()[0].asDict()
+        except Exception as e:
+            logger.error("stats_agg_failed", error=str(e))
+            return []
 
         # 2) IQR outlier detection for numeric columns (single approxQuantile call).
         numeric_cols = [
@@ -87,8 +94,9 @@ class StatsTool:
                     outlier_row = df.agg(*outlier_exprs).collect()[0].asDict()
                     for c in bounds:
                         outlier_counts[c] = int(outlier_row.get(f"{c}__outliers", 0) or 0)
-            except Exception:
+            except Exception as e:
                 # Quantiles can fail on all-null columns — skip outlier detection gracefully.
+                logger.warning("outlier_detection_skipped", error=str(e))
                 outlier_counts = {}
 
         # 3) Assemble typed profiles with native-typed min/max values.
@@ -112,4 +120,5 @@ class StatsTool:
                 )
             )
 
+        logger.info("stats_profiling_complete", column_count=len(out))
         return out

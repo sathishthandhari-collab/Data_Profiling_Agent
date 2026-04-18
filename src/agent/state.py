@@ -17,11 +17,12 @@ class AgentState(TypedDict):
     # Internal Data
     df: DataFrame
     df_rows_count: int
+    original_row_count: Optional[int]
     column_schemas: List[ColumnSchema]
     stats_profiles: List[StatsProfile]
     pii_profiles: List[PIIProfile]
     fk_hints: List[FKHint]
-    detected_patterns: Dict[str, List[str]]
+    detected_patterns: Dict[str, Any]  # Updated to Any for new PatternTool results
     
     # Processed Data (for LLM)
     summarized_stats: List[Dict[str, Any]]

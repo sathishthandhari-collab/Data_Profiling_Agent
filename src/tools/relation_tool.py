@@ -1,7 +1,10 @@
+import structlog
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
 from typing import List, Dict
 from src.models.profile_report import FKHint
+
+logger = structlog.get_logger(__name__)
 
 class RelationTool:
     @staticmethod
@@ -10,8 +13,6 @@ class RelationTool:
         Finds potential FK relationships using:
         - Name-based candidate pruning, then
         - Approximate containment: distinct(source_col) values that appear in target_col.
-
-        This avoids the previous "similar cardinality == relationship" false positives.
         """
         hints: List[FKHint] = []
         if not other_dfs:
@@ -22,7 +23,6 @@ class RelationTool:
             return c == "id" or c.endswith("_id") or "id" in c
 
         def compatible_types(a: str, b: str) -> bool:
-            # Keep it simple: both numeric-ish or both string-ish.
             a_num = any(t in a for t in ("Integer", "Long", "Double", "Float", "Decimal"))
             b_num = any(t in b for t in ("Integer", "Long", "Double", "Float", "Decimal"))
             a_str = "String" in a
@@ -32,6 +32,8 @@ class RelationTool:
         source_cols = [f.name for f in source_df.schema.fields if is_id_like(f.name)]
         if not source_cols:
             return hints
+
+        logger.info("relation_profiling_started", source_candidate_count=len(source_cols), other_tables=list(other_dfs.keys()))
 
         # Precompute approximate distinct counts for source candidates.
         src_card_row = source_df.agg(
@@ -69,8 +71,7 @@ class RelationTool:
                             if not (s_norm == t_norm or s_norm in t_norm or t_norm in s_norm):
                                 continue
 
-                            # Approximate containment: how many distinct source values exist in target?
-                            # Using distinct values reduces join size substantially.
+                            # Approximate containment
                             if s_col not in src_distinct:
                                 src_distinct[s_col] = (
                                     source_df.select(F.col(s_col).alias("k"))
@@ -78,7 +79,6 @@ class RelationTool:
                                     .distinct()
                                     .cache()
                                 )
-                                # materialize so we don't recompute for each target comparison
                                 src_distinct[s_col].count()
                             if t_col not in tgt_distinct:
                                 tgt_distinct[t_col] = (
@@ -101,7 +101,6 @@ class RelationTool:
                             src_card = src_cards[s_col]
                             match_ratio = (inter / src_card) if src_card else 0.0
 
-                            # FK-ish: most source keys appear in target domain.
                             if match_ratio >= 0.90 and tgt_cards.get(t_col, 0) >= inter:
                                 hints.append(
                                     FKHint(
@@ -124,4 +123,5 @@ class RelationTool:
                 except Exception:
                     pass
 
+        logger.info("relation_profiling_complete", hint_count=len(hints))
         return hints

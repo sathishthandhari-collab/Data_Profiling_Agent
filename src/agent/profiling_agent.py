@@ -20,6 +20,8 @@ from src.agent.prompts.system_prompt import SYSTEM_PROMPT
 from src.agent.prompts.interpretation_prompt import INTERPRETATION_PROMPT
 from src.models.profile_report import ProfileReport, LLMInterpretation
 from src.models.source_config import SourceConfig
+from src.output.delta_writer import DeltaWriter
+import pyspark.sql.functions as F
 
 load_dotenv()
 
@@ -29,7 +31,7 @@ def _esc(s: str) -> str:
     return s.replace("{", "{{").replace("}", "}}")
 
 class ProfilingAgent:
-    def __init__(self, model_name: str = "gemini/gemini-2.5-flash"):
+    def __init__(self, model_name: str = "gemini/gemini-3.0-flash"):
         self.model_name = model_name
         self.reader = DataReader()
         self.pattern_tool = PatternTool()
@@ -55,8 +57,45 @@ class ProfilingAgent:
         return graph.compile()
 
     def node_reader(self, state: AgentState):
-        logger.info("node_reader_started", table=state["source_config"].table)
-        df = self.reader.load_data(state["source_config"])
+        cfg = state["source_config"]
+        logger.info("node_reader_started", table=cfg.table, mode=cfg.execution_mode)
+        df = self.reader.load_data(cfg)
+        
+        # Dual-Mode: Incremental Filter for Observability
+        if cfg.execution_mode == "observability" and cfg.incremental_timestamp_col:
+            # Query existing profiling_reports to fetch previous max timestamp
+            writer = DeltaWriter(self.reader.spark)
+            try:
+                if writer.output_table:
+                    history_df = self.reader.spark.table(writer.output_table)
+                elif Path(writer.output_path).exists():
+                    history_df = self.reader.spark.read.format("delta").load(writer.output_path)
+                else:
+                    history_df = None
+                
+                if history_df:
+                    # Scan JSON payload for the max threshold of the column
+                    res = history_df.filter(history_df.source_table == cfg.table).select("report_json").collect()
+                    max_ts = None
+                    for row in res:
+                        try:
+                            report_dict = json.loads(row["report_json"])
+                            for st in report_dict.get("stats", []):
+                                if st["column"] == cfg.incremental_timestamp_col:
+                                    m = st.get("max_val")
+                                    if m is not None:
+                                        if max_ts is None or str(m) > str(max_ts):
+                                            max_ts = m
+                        except Exception:
+                            pass
+                    
+                    if max_ts is not None:
+                        logger.info("incremental_filter_applied", col=cfg.incremental_timestamp_col, high_water_mark=str(max_ts))
+                        df = df.filter(F.col(cfg.incremental_timestamp_col) > F.lit(str(max_ts)))
+                    else:
+                        logger.info("no_historical_watermark_found", col=cfg.incremental_timestamp_col)
+            except Exception as e:
+                logger.warning("incremental_watermark_fetch_failed", error=str(e))
         
         row_count = df.count()
         
@@ -95,7 +134,11 @@ class ProfilingAgent:
 
         errors = list(state.get("errors") or [])
         
-        # Tools are independent, try/except each
+        cfg = state["source_config"]
+        
+        # Conditional Execution for Observability Mode (Skip Heavy Tools)
+        is_observability = (cfg.execution_mode == "observability")
+
         try:
             column_schemas = SchemaTool.profile(df, row_count)
         except Exception as e:
@@ -110,26 +153,33 @@ class ProfilingAgent:
             errors.append(f"StatsTool failed: {str(e)}")
             stats_profiles = []
 
-        try:
-            pii_profiles = PIITool.profile(df, row_count)
-        except Exception as e:
-            logger.error("pii_tool_failed", error=str(e))
-            errors.append(f"PIITool failed: {str(e)}")
+        if is_observability:
+            # Observability mode purely checks anomaly rates and schema integrity.
+            # Skips Semantic patterns, PII, and Relations explicitly.
             pii_profiles = []
-
-        try:
-            detected_patterns = self.pattern_tool.profile(df, row_count)
-        except Exception as e:
-            logger.error("pattern_tool_failed", error=str(e))
-            errors.append(f"PatternTool failed: {str(e)}")
             detected_patterns = {}
-
-        try:
-            fk_hints = RelationTool.profile(df, other_dfs)
-        except Exception as e:
-            logger.error("relation_tool_failed", error=str(e))
-            errors.append(f"RelationTool failed: {str(e)}")
             fk_hints = []
+        else:
+            try:
+                pii_profiles = PIITool.profile(df, row_count)
+            except Exception as e:
+                logger.error("pii_tool_failed", error=str(e))
+                errors.append(f"PIITool failed: {str(e)}")
+                pii_profiles = []
+
+            try:
+                detected_patterns = self.pattern_tool.profile(df, row_count)
+            except Exception as e:
+                logger.error("pattern_tool_failed", error=str(e))
+                errors.append(f"PatternTool failed: {str(e)}")
+                detected_patterns = {}
+
+            try:
+                fk_hints = RelationTool.profile(df, other_dfs)
+            except Exception as e:
+                logger.error("relation_tool_failed", error=str(e))
+                errors.append(f"RelationTool failed: {str(e)}")
+                fk_hints = []
 
         return {
             "column_schemas": column_schemas,
@@ -193,15 +243,20 @@ class ProfilingAgent:
         return {"summarized_stats": [s.model_dump() for s in selected]}
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    def _call_llm(self, prompt: str):
-        response = completion(
-            model=self.model_name,
-            messages=[
+    def _call_llm(self, prompt: str, request_source: Optional[str] = None):
+        kwargs = {
+            "model": self.model_name,
+            "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            response_format={"type": "json_object"},
-        )
+            "response_format": {"type": "json_object"},
+        }
+        
+        if request_source == "auditor":
+            kwargs["metadata"] = {"tags": {"purpose": "evaluation"}}
+            
+        response = completion(**kwargs)
         return response.choices[0].message.content
 
     def _fallback_interpretation(self, state: AgentState) -> LLMInterpretation:
@@ -260,13 +315,23 @@ class ProfilingAgent:
         )
 
         disable_llm = os.getenv("DISABLE_LLM", "").strip().lower() in {"1", "true", "yes"}
+        cfg = state["source_config"]
         interpretation: Optional[LLMInterpretation] = None
 
-        if disable_llm:
+        if cfg.execution_mode == "observability":
+            # Observability mode explicitly bypasses LLM interpretation for latency/cost tracking
+            interpretation = LLMInterpretation(
+                suggested_entity_name=cfg.table.title(),
+                bk_candidates=[],
+                pii_summary=[],
+                dq_flags=["Observability Profile Complete - Semantic Analysis Skipped"],
+                confidence=1.0,
+            )
+        elif disable_llm:
             interpretation = self._fallback_interpretation(state)
         else:
             try:
-                content = self._call_llm(prompt)
+                content = self._call_llm(prompt, state.get("request_source"))
                 try:
                     interpretation_dict = json.loads(content)
                 except Exception:
@@ -299,12 +364,13 @@ class ProfilingAgent:
 
         return {"errors": errors, "interpretation": interpretation, "final_report": report}
 
-    def run(self, source_config: SourceConfig):
+    def run(self, source_config: SourceConfig, request_source: Optional[str] = None):
         start_time = time.time()
         logger.info("agent_run_started", table=source_config.table)
         
         initial_state = {
             "source_config": source_config,
+            "request_source": request_source,
             "errors": [],
         }
         result = self.workflow.invoke(initial_state)
@@ -313,18 +379,16 @@ class ProfilingAgent:
         logger.info("agent_run_complete", table=source_config.table, duration=duration)
         return result
 
-    def run_batch(self, configs: List[SourceConfig]) -> List[ProfileReport]:
+    def run_batch(self, configs: List[SourceConfig], request_source: Optional[str] = None) -> List[ProfileReport]:
         logger.info("batch_profiling_started", count=len(configs))
         reports = []
         for cfg in configs:
             try:
-                res = self.run(cfg)
+                res = self.run(cfg, request_source)
                 if res.get("final_report"):
                     reports.append(res["final_report"])
             except Exception as e:
                 logger.error("table_profiling_failed", table=cfg.table, error=str(e))
         
         logger.info("batch_profiling_complete", report_count=len(reports))
-        return reports
-ch_profiling_complete", report_count=len(reports))
         return reports

@@ -11,6 +11,8 @@ class SourceConfig(BaseModel):
 
     name: str
     source_system: str = "LoanIQ"
+    execution_mode: Literal["deep", "observability"] = "deep"
+    incremental_timestamp_col: Optional[str] = None
 
     # DB/table style config (current Streamlit payload)
     database: str = "banking"

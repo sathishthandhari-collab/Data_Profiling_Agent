@@ -1,39 +1,24 @@
-# 🏦 Data Profiling Agent Documentation
+# Documentation Index
 
-Welcome to the documentation for the **Data Profiling Agent**, an AI-driven system for modern, configuration-driven data profiling using Gemini 2.5 Flash, PySpark, and Delta Lake.
+Welcome to the **Banking AI Agent Platform** documentation portal. This documentation follows the **Diátaxis framework**, categorizing content to best serve different needs: Learning, Problem-solving, Information, and Understanding.
 
-The agent automates the discovery of data patterns, PII detection, relationship inference, and provides LLM-driven interpretations of complex datasets.
+## 🧭 Navigation
 
----
+### 🎓 Tutorials (Learning-oriented)
+- **[Profile Your First Table](tutorial.md):** Get started with a step-by-step profiling workflow.
 
-## 🗺️ Documentation Map
+### 🛠️ How-to Guides (Problem-oriented)
+- **[Databricks Deployment](deployment.md):** Deploy the agent natively on Databricks.
+- **[Configuration Patterns](config-patterns.md):** Customizing regex patterns for new source systems.
 
-Our documentation is organized following the [Diátaxis framework](https://diataxis.fr/):
+### 📜 Reference (Information-oriented)
+- **[API Reference](api-reference.md):** Full documentation for FastAPI endpoints.
+- **[ProfileReport Schema](output-schema.md):** Detailed breakdown of the JSON output model.
 
-### 🚀 [Tutorials](./tutorial.md)
-*Learning-oriented: Follow a guided path to get started.*
-- **Quickstart Guide:** From zero to your first profile report.
-- **Batch Profiling:** Scale your profiling tasks across multiple tables.
-
-### 🛠️ [How-To Guides](./how-to-guides.md)
-*Problem-oriented: Solve specific tasks and common challenges.*
-- **Custom Patterns:** Adding domain-specific regex patterns for detection.
-- **Data Connections:** Connecting to Delta Lake, Parquet, or CSV sources.
-- **LLM Configuration:** Swapping models or providers via LiteLLM.
-- **Running in Docker:** Deploying the agent and UI stack.
-
-### 📚 [Reference](./api-reference.md)
-*Information-oriented: Technical descriptions and API specifications.*
-- **API Endpoints:** Detailed documentation of the FastAPI interface.
-- **Data Models:** Schema definitions for `SourceConfig` and `ProfileReport`.
-- **Tool Logic:** Technical specifications of the underlying profiling tools.
-
-### 🧠 [Explanation](./explanation.md)
-*Understanding-oriented: High-level concepts and architecture.*
-- **Agent Architecture:** Deep dive into the LangGraph workflow.
-- **Interpretation Engine:** How the LLM synthesizes profiling results.
-- **Security & Privacy:** PII detection strategies and data sampling.
+### 🧠 Explanation (Understanding-oriented)
+- **[Architecture Deep-Dive](architecture.md):** Detailed look at the LangGraph agent and Spark tools.
+- **[Data Vault 2.0 Context](dv2-context.md):** Why we profile and how it feeds the downstream modeling agent.
 
 ---
 
-[← Back to README](../README.md)
+[← Return to README](../README.md)

@@ -1,0 +1,38 @@
+{
+  "input": {
+    "connection_type": "file",
+    "format": "csv",
+    "table": "accounts",
+    "source_system": "core_banking"
+  },
+  "expected": {
+    "report_id": "00000000-0000-0000-0000-000000000000",
+    "source_table": "accounts",
+    "source_system": "core_banking",
+    "profiled_at": "2026-04-18T00:00:00Z",
+    "row_count": 1000,
+    "columns": [
+      {
+        "name": "account_id",
+        "type": "string",
+        "is_pk_candidate": true
+      }
+    ],
+    "stats": [],
+    "pii_info": [],
+    "fk_hints": [],
+    "interpretation": {
+      "suggested_entity_name": "Account",
+      "bk_candidates": [
+        {
+          "column": "account_id",
+          "confidence": 0.95,
+          "reasoning": "Standard ID column"
+        }
+      ],
+      "pii_summary": [],
+      "dq_flags": [],
+      "confidence": 0.95
+    }
+  }
+}

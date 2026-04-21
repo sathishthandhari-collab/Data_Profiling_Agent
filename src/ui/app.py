@@ -23,8 +23,16 @@ if connection_type == "delta":
     delta_base = DATA_ROOT / "delta"
     if delta_base.exists():
         available_tables = [d.name for d in delta_base.iterdir() if d.is_dir() and d.name != "profiling_reports" and not d.name.endswith("_index")]
+elif connection_type == "databricks":
+    try:
+        resp = requests.get(f"{API_URL}/tables", timeout=100)
+        if resp.status_code == 200:
+            available_tables = resp.json().get("tables", [])
+    except Exception as e:
+        st.sidebar.warning(f"Could not fetch Databricks tables: {e}")
 
-selected_db = st.sidebar.text_input("Database/Catalog", value="banking")
+default_db = "banking_raw" if connection_type == "databricks" else "banking"
+selected_db = st.sidebar.text_input("Database/Schema", value=default_db)
 selected_table = st.sidebar.selectbox("Select Table", available_tables if available_tables else ["accounts", "customers", "loans"])
 source_system = st.sidebar.text_input("Source System", value="core_banking")
 

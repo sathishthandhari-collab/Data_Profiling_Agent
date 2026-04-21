@@ -1,5 +1,4 @@
 import os
-import yaml
 import structlog
 from pyspark.sql import DataFrame
 import pyspark.sql.functions as F
@@ -8,32 +7,30 @@ from typing import Dict, List, Any
 logger = structlog.get_logger(__name__)
 
 class PatternTool:
-    # Layer 1: Universal banking patterns (always active)
-    UNIVERSAL_PATTERNS = {
+    # Layer 1: Core Banking Patterns & Defaults (always active)
+    CORE_PATTERNS = {
+        # Standards
         "IBAN": r"^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$",
         "SWIFT_BIC": r"^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$",
         "ISO_8601": r"^\d{4}-\d{2}-\d{2}",
         "ISO_4217": r"^[A-Z]{3}$",
-        "EMAIL": r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+        "EMAIL": r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$",
+        # Default Platform Patterns
+        "ACCOUNT_ID": r"ACC-\d{6}",
+        "CUSTOMER_ID": r"CUST-\d{6}",
+        "LOAN_ID": r"LOAN-\d{6}",
+        "BRANCH_CODE": r"BR-\d{3}"
     }
 
-    def __init__(self, config_path: str = "config/patterns.yaml"):
-        self.custom_patterns = {}
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r") as f:
-                    config = yaml.safe_load(f)
-                    self.custom_patterns = config.get("custom_patterns", {})
-                    logger.info("loaded_custom_patterns", count=len(self.custom_patterns))
-            except Exception as e:
-                logger.error("failed_to_load_patterns_config", error=str(e))
+    def __init__(self):
+        # Configuration is now handled entirely within this tool's defaults + LLM semantics downstream.
+        pass
 
     def profile(self, df: DataFrame, total_count: int) -> Dict[str, Any]:
         """
-        3-layer hybrid pattern detection:
-        1. Universal banking patterns (Code)
-        2. Source-system patterns (Config)
-        3. Data-driven heuristics (Discovery)
+        Hybrid pattern detection:
+        1. Core defaults & Standards (Code)
+        2. Data-driven heuristics (Discovery for LLM)
         """
         if total_count == 0:
             return {}
@@ -42,7 +39,7 @@ class PatternTool:
         if not string_cols:
             return {}
 
-        all_patterns = {**self.UNIVERSAL_PATTERNS, **self.custom_patterns}
+        all_patterns = self.CORE_PATTERNS
         
         # Aggregation expressions for Layers 1 & 2
         agg_exprs = []

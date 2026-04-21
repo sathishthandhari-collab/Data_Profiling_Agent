@@ -1,66 +1,71 @@
-# 📚 API Reference
+# API Reference
 
-Technical specifications for the **Data Profiling Agent** API and its underlying data models.
+The **Banking AI Agent Platform** provides a FastAPI interface for programmatic interaction with the profiling agent.
 
-## 📡 Endpoints
+## 🚀 Endpoint: POST /profile
 
-### `GET /health`
-Returns the status and version of the agent.
+Triggers a profiling run for a single source table.
 
-### `POST /profile`
-Triggers profiling for a single table.
+### 📝 Request Body (`SourceConfig`)
 
-**Request Body:** `SourceConfig`
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| **system_name** | `string` | Name of the source system (e.g., "core_banking"). |
+| **table_name** | `string` | Name of the table to profile. |
+| **path** | `string` | Full file path or Unity Catalog table name. |
+| **format** | `string` | Data format (`delta`, `parquet`, `csv`, or `databricks`). |
+| **connection_type** | `string` | Connection mode (`local` or `databricks`). |
+
+#### Example: Local Delta Table
 ```json
 {
-  "name": "Customer Profile",
-  "table": "customers",
-  "connection_type": "delta",
-  "source_system": "CRM"
+  "system_name": "faker_banking",
+  "table_name": "accounts",
+  "path": "/data/delta/accounts",
+  "format": "delta",
+  "connection_type": "local"
 }
 ```
 
-**Response:** `ProfileReport`
+#### Example: Databricks Table
+```json
+{
+  "system_name": "databricks_prod",
+  "table_name": "customers",
+  "path": "main.banking.customers",
+  "format": "databricks",
+  "connection_type": "databricks"
+}
+```
 
-### `POST /profile/batch`
-Triggers profiling for multiple tables.
+### ✅ Response (`ProfileReport`)
 
-**Request Body:** `List[SourceConfig]`
-**Response:** `List[ProfileReport]`
+Returns a comprehensive JSON report containing schema, statistics, patterns, PII, and LLM interpretation.
 
-### `GET /report/{report_id}`
-Retrieves a previously generated report.
-
-## 🏗️ Data Models
-
-### `SourceConfig`
-Configuration for the source data.
-- `name` (Optional): Friendly name for the table.
-- `table` (Required): Table name or file path.
-- `connection_type` (Required): `delta`, `csv`, or `parquet`.
-- `source_system` (Optional): System of origin for metadata context.
-
-### `ProfileReport`
-The final output of the profiling agent.
-- `report_id`: Unique identifier for the report.
-- `source_table`: Name of the profiled table.
-- `row_count`: Total rows (or sample count).
-- `columns`: List of column schemas (`ColumnSchema`).
-- `stats`: Statistical profiles (`ColumnStats`).
-- `pii_info`: PII detection results (`PIIProfile`).
-- `fk_hints`: Inferred foreign key relationships (`FKHint`).
-- `interpretation`: LLM-generated analysis (`LLMInterpretation`).
-
-## 🛠️ Profiling Tools
-
-| Tool | Responsibility |
-| --- | --- |
-| **SchemaTool** | Infers data types and primary key candidates. |
-| **StatsTool** | Calculates distributions, null rates, and detects outliers. |
-| **PIITool** | Identifies sensitive data (Email, SSN, Credit Card, etc.) via Spark-native functions. |
-| **PatternTool** | Matches regex patterns defined in `config/patterns.yaml`. |
-| **RelationTool** | Cross-references tables in the Delta Lake to find join candidates. |
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| **report_id** | `UUID` | Unique identifier for this profiling run. |
+| **timestamp** | `datetime` | When the profiling was performed. |
+| **schema** | `dict` | Column types and primary key candidates. |
+| **stats** | `dict` | Null rates, cardinality, and outlier info. |
+| **llm_interpretation** | `dict` | Business key and entity name suggestions. |
 
 ---
 
-[← Back to Main Index](./index.md)
+## 🚀 Endpoint: GET /report/{id}
+
+Retrieves a previously generated profiling report by its UUID.
+
+### 📝 Parameters
+
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| **id** | `string` | The UUID of the profiling report. |
+
+### ✅ Response
+
+The full `ProfileReport` JSON object or a `404 Not Found` if the report does not exist.
+
+---
+
+[← Back to Main Index](index.md) | [← Return to README](../README.md)

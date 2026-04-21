@@ -10,17 +10,17 @@ def test_pattern_tool_layers(spark):
     ]
     df = spark.createDataFrame(data)
     
-    # Use a mock config or the default one created earlier
-    tool = PatternTool(config_path="config/patterns.yaml")
+    # Initialize the tool
+    tool = PatternTool()
     results = tool.profile(df, 3)
     
-    # Layer 1: Universal
+    # Layer 1: Standards
     assert "iban" in results
     assert "IBAN" in results["iban"]["patterns"]
     assert "email" in results
     assert "EMAIL" in results["email"]["patterns"]
     
-    # Layer 2: Custom (from config/patterns.yaml)
+    # Layer 1: Defaults (Core Platform Patterns)
     assert "account_id" in results
     assert "ACCOUNT_ID" in results["account_id"]["patterns"]
     

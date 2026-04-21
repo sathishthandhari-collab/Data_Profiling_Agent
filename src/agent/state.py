@@ -13,6 +13,7 @@ from src.models.source_config import SourceConfig
 class AgentState(TypedDict):
     # Inputs
     source_config: SourceConfig
+    request_source: Optional[str]
     
     # Internal Data
     df: DataFrame

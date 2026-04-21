@@ -1,7 +1,0 @@
-# config/patterns.yaml
-source_system: "core_banking"
-custom_patterns:
-  ACCOUNT_ID: "ACC-\\d{6}"
-  CUSTOMER_ID: "CUST-\\d{6}"
-  LOAN_ID: "LOAN-\\d{6}"
-  BRANCH_CODE: "BR-\\d{3}"

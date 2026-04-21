@@ -1,89 +1,109 @@
-# 🏦 Data Profiling Agent
+# Banking AI Agent Platform — Data Profiling Agent
 
-![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![LLM](https://img.shields.io/badge/LLM-Gemini_2.5_Flash-orange)
-![Spark](https://img.shields.io/badge/Spark-3.5.0-red)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+[![Framework: LangGraph](https://img.shields.io/badge/Framework-LangGraph-orange.svg)](https://langchain-ai.github.io/langgraph/)
+[![Compute: PySpark](https://img.shields.io/badge/Compute-PySpark-red.svg)](https://spark.apache.org/docs/latest/api/python/index.html)
 
-**Modern, AI-driven data profiling and interpretation for Delta Lake and more.**
+A production-grade, end-to-end agentic data pipeline built on **Databricks** and **Delta Lake**. This platform autonomously transforms raw synthetic banking data into a governed, semantic layer using a multi-agent system powered by **LangGraph** and **Gemini Flash**.
 
-The **Data Profiling Agent** is an intelligent system that automates the complex task of understanding large datasets. By combining the scale of **PySpark** with the reasoning power of **Gemini 2.5 Flash**, it transforms raw statistics into human-readable insights, detects sensitive PII, and infers cross-table relationships.
-
----
-
-## ✨ Key Features
-
-- **🤖 AI interpretation:** Automatically generates entity descriptions, data quality (DQ) flags, and primary key analysis.
-- **🛡️ PII Detection:** High-performance detection of sensitive data using Spark-native functions.
-- **🔗 Relationship Discovery:** Infers potential foreign key relationships across your entire Delta Lake.
-- **📈 Pattern Matching:** Extensible regex-based pattern detection for domain-specific identifiers.
-- **🚀 Scalable Profiling:** Built-in sampling guards and caching to handle datasets with millions of rows.
-- **🔌 Flexible Interfaces:** Both a developer-friendly **FastAPI** and a user-friendly **Streamlit UI**.
+> **Note:** This repository specifically implements **Agent 1: The Data Profiling Agent**, the first stage of the 6-agent pipeline.
 
 ---
 
-## 🏗️ Architecture
+## 🌟 Platform Vision
 
-The agent uses a structured **LangGraph** workflow to ensure reliability and deterministic execution of profiling tools.
+Raw banking data (CSV/Parquet/Delta) is ingested and autonomously:
+1.  **Profiles** schema, stats, and business key candidates (Agent 1).
+2.  **Models** Data Vault 2.0 entity design (Agent 2).
+3.  **Builds** dbt-databricks vault code (Agent 3).
+4.  **Validates** via DQ rules and audit trails (Agent 4).
+5.  **Orchestrates** statefully with human-in-the-loop checkpoints (Agent 5).
+6.  **Serves** answers via NL2SQL on Unity Catalog (Agent 6).
+
+---
+
+## 🏗️ Architecture: Multi-Agent Topology
 
 ```mermaid
-graph LR
-    subgraph "Agent Workflow"
-        Reader --> Profiler
-        Profiler --> Summarizer
-        Summarizer --> Interpreter
-    end
-    
-    subgraph "Profiling Core"
-        Profiler --- Schema[Schema Tool]
-        Profiler --- Stats[Stats Tool]
-        Profiler --- PII[PII Tool]
-        Profiler --- Patterns[Pattern Tool]
-        Profiler --- Relations[Relation Tool]
-    end
+graph TD
+    A[Raw Banking Data] --> B[Agent 1: Profiler]
+    B -->|ProfileReport| C[Agent 2: Modeler]
+    C -->|DV2Spec| D[Agent 3: Builder]
+    D -->|dbt Code| E[Agent 4: DQ & Audit]
+    E -->|Validated Vault| F[Agent 5: Orchestrator]
+    F -->|Semantic Layer| G[Agent 6: NL2SQL]
+    G --> H[End User Answers]
 
-    Interpreter --> LLM((Gemini 2.5))
+    subgraph "Agent 1: Data Profiling (Current)"
+        B1[Schema Tool] --> B5[LangGraph Agent]
+        B2[Stats Tool] --> B5
+        B3[Pattern Tool] --> B5
+        B4[Relation Tool] --> B5
+        B5 -->|JSON Interpretation| B6[ProfileReport]
+    end
 ```
 
 ---
 
-## ⚡ Quick Start
+## 🚀 Quick Start (Local Development)
 
+Get the profiling agent running locally in minutes using Docker.
+
+### 1. Prerequisites
+- Docker & Docker Compose
+- Google AI Studio API Key (for Gemini Flash)
+
+### 2. Setup
 ```bash
 # Clone the repository
-git clone <repository_url> && cd data-profiling-agent
+git clone https://github.com/sathish-thandhari/banking-profiling-agent.git
+cd banking-profiling-agent
 
-# Set up environment
+# Create environment file
 cp .env.example .env
-
-# Launch with Docker
-docker-compose up -d
+# Edit .env and add your GEMINI_API_KEY
 ```
-Visit http://localhost:8501 to start profiling!
 
----
-
-## 📖 Documentation Portal
-
-Explore our detailed documentation following the Diátaxis framework:
-
-| Section | Description |
-| --- | --- |
-| 🚀 [**Tutorials**](./docs/tutorial.md) | Step-by-step guides for getting started and batch profiling. |
-| 🛠️ [**How-To Guides**](./docs/how-to-guides.md) | Guides for custom patterns, data connections, and LLM setup. |
-| 📚 [**Reference**](./docs/api-reference.md) | Technical specs for API endpoints, models, and profiling tools. |
-| 🧠 [**Explanation**](./docs/explanation.md) | Deep dives into the agent's architecture and design decisions. |
+### 3. Launch
+```bash
+docker-compose up --build
+```
+- **FastAPI:** [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Streamlit UI:** [http://localhost:8501](http://localhost:8501)
+- **Spark UI:** [http://localhost:4040](http://localhost:4040)
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Core Engine:** Python 3.10+, LangGraph, LiteLLM
-- **Data Engine:** PySpark, Delta Lake
-- **API:** FastAPI, Uvicorn
+- **Orchestration:** LangGraph (Stateful Agent Workflows)
+- **LLM:** Gemini 2.5 Flash (via LiteLLM)
+- **Compute:** PySpark 3.5.0
+- **Storage:** Delta Lake (Local & Databricks)
+- **API:** FastAPI
 - **UI:** Streamlit
-- **Quality:** Pytest, Structlog
+- **Observability:** Structlog & MLflow
 
 ---
 
-[← Return to Documentation Index](./docs/index.md)
+## 📖 Documentation Portal
+
+For deeper dives into the system, visit our [Documentation Index](docs/index.md):
+
+- **[Architecture Deep-Dive](docs/architecture.md):** How the profiling agent reasons about data.
+- **[API Reference](docs/api-reference.md):** Integration details for the `POST /profile` endpoint.
+- **[Databricks Deployment](docs/deployment.md):** Porting the agent to run natively on Databricks.
+- **[Tutorial: Profile Your First Table](docs/tutorial.md):** A step-by-step guide for developers.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) and check out the [Issue Tracker](https://github.com/sathish-thandhari/banking-profiling-agent/issues).
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

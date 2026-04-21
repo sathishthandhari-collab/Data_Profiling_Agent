@@ -1,11 +1,25 @@
 import os
+import structlog
 from pyspark.sql import SparkSession
 from delta import configure_spark_with_delta_pip
 
+logger = structlog.get_logger(__name__)
+
 def get_spark_session(app_name: str = "DataProfilingAgent"):
     """
-    Factory for SparkSession with Delta Lake support.
+    Factory for SparkSession with Delta Lake support or Databricks Connect.
     """
+    # Use Databricks Connect if configured
+    if os.getenv("DATABRICKS_HOST") and os.getenv("DATABRICKS_TOKEN"):
+        try:
+            from databricks.connect import DatabricksSession
+            logger.info("creating_databricks_session")
+            # DatabricksSession automatically uses the DATABRICKS_* environment variables
+            # It will connect to serverless or to the cluster specified in DATABRICKS_CLUSTER_ID
+            return DatabricksSession.builder.getOrCreate()
+        except ImportError:
+            logger.warning("databricks_connect_not_installed_falling_back_to_local_spark")
+
     master = os.getenv("SPARK_MASTER", "local[*]")
     
     builder = (

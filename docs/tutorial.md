@@ -1,89 +1,59 @@
-# 🚀 Quickstart Guide
+# Tutorial: Profile Your First Table
 
-This tutorial will take you from setting up the **Data Profiling Agent** to generating your first AI-driven profile report.
+In this tutorial, we'll walk through a complete data profiling workflow. By the end, you'll have a fully generated **ProfileReport** for a synthetic banking accounts table.
 
-## 📋 Prerequisites
+## 🏃 Prerequisites
 
-Before you begin, ensure you have:
-- Python 3.10+ installed.
-- Access to an LLM provider (e.g., Google Gemini, OpenAI, etc.).
-- `pyspark` and `delta-spark` dependencies (included in `requirements.txt`).
+1.  **Clone the repository.**
+2.  **Edit your `.env` file** to add your `GEMINI_API_KEY`.
+3.  **Start the services:**
+    ```bash
+    docker-compose up --build
+    ```
 
-## 🛠️ Step 1: Environment Setup
+## 📝 Step 1: Ingest Data
 
-Clone the repository and install the dependencies:
-
-```bash
-git clone <repository_url>
-cd data-profiling-agent
-pip install -r requirements.txt
-```
-
-Create a `.env` file based on the provided `.env.example`:
+First, we'll use the Faker data generator (if available) to create sample banking data.
 
 ```bash
-cp .env.example .env
+# Run the data generator script (if you have it)
+python src/data_gen/banking_faker.py --rows 1000
 ```
 
-Edit the `.env` file to include your API keys and configuration:
+This will create a Delta table at `data/delta/accounts`.
 
-```env
-GEMINI_API_KEY=your_key_here
-LLM_PROVIDER=gemini/gemini-2.5-flash
-DATA_PATH=data
-API_URL=http://localhost:8000
-```
+## 🚀 Step 2: Trigger the Profiling Agent
 
-## 🏗️ Step 2: Launch the Services
-
-You can run the agent as a standalone FastAPI service or through the Streamlit UI.
-
-### Option A: Running with Docker (Recommended)
+Use **cURL** or the FastAPI Swagger UI to trigger the profiling process.
 
 ```bash
-docker-compose up -d
-```
-This will start:
-- **Agent API:** http://localhost:8000
-- **Streamlit UI:** http://localhost:8501
-
-### Option B: Manual Startup
-
-Launch the API:
-```bash
-uvicorn src.api.main:app --host 0.0.0.0 --port 8000
-```
-
-Launch the UI (in a new terminal):
-```bash
-streamlit run src.ui/app.py
-```
-
-## 📊 Step 3: Profile Your First Table
-
-1. Open the Streamlit UI at http://localhost:8501.
-2. Under **Source Connection**, select your connection type (e.g., `delta`, `csv`).
-3. Enter the table name or file path.
-4. Click **🚀 Trigger Profiling**.
-5. Wait for the agent to complete its workflow:
-   - **Data Reader:** Loads and samples the data.
-   - **Profiler:** Executes specialized tools (Schema, Stats, PII, Patterns, Relations).
-   - **Summarizer:** Optimizes the context for the LLM.
-   - **Interpreter:** Generates human-readable insights using Gemini.
-
-## 🔄 Batch Profiling
-
-To profile multiple tables at once, you can use the `/profile/batch` endpoint. In the UI, look for the **Batch Mode** toggle or provide a list of configurations via the API:
-
-```bash
-curl -X POST "http://localhost:8000/profile/batch" \
+curl -X POST "http://localhost:8000/profile" \
      -H "Content-Type: application/json" \
-     -d '[
-           {"table": "transactions", "connection_type": "delta"},
-           {"table": "customers", "connection_type": "delta"}
-         ]'
+     -d '{
+           "system_name": "faker_banking",
+           "table_name": "accounts",
+           "path": "/data/delta/accounts",
+           "format": "delta",
+           "connection_type": "local"
+         }'
 ```
+
+The agent will:
+1.  **Read the Delta table** using PySpark.
+2.  **Execute the 5-tool profiling suite** (Schema, Stats, Patterns, PII, Relations).
+3.  **Consult the LLM (Gemini Flash)** to interpret the results.
+4.  **Write the final report** back to Delta Lake.
+
+## 📊 Step 3: Review Results in Streamlit
+
+Open your browser and navigate to:
+**[http://localhost:8501](http://localhost:8501)**
+
+1.  **Select the "Accounts" table** from the sidebar.
+2.  **Review the Schema tab** for data types and PK candidates.
+3.  **Check the Stats tab** for null rates and outliers.
+4.  **Examine the "LLM Insights" card** to see the agent's business key (BK) and entity suggestions.
 
 ---
 
-[← Back to Main Index](./index.md)
+[← Back to Main Index](index.md) | [← Return to README](../README.md)

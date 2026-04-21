@@ -49,6 +49,9 @@ class DataReader:
         logger.info("loading_table_source", connection=config.connection_type, database=config.database, table=config.table)
         
         if config.connection_type == "databricks":
+            catalog = os.getenv("DATABRICKS_CATALOG", "")
+            if catalog:
+                return self.spark.table(f"{catalog}.{config.database}.{config.table}")
             return self.spark.table(f"{config.database}.{config.table}")
 
         elif config.connection_type in {"delta", "parquet", "csv"}:
